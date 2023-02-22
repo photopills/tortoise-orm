@@ -14,4 +14,4 @@ class SearchCriterion(BasicCriterion):  # type: ignore
             _expr = expr
         else:
             _expr = ToTsQuery(expr)
-        super().__init__(Comp.search, ToTsVector(field), _expr)
+        super().__init__(Comp.search, ToTsVector(config_name=_expr.config_name, field=field), _expr)
