@@ -10,8 +10,6 @@ class Comp(Comparator):  # type: ignore
 
 class SearchCriterion(BasicCriterion):  # type: ignore
     def __init__(self, field: Term, expr: Union[Term, Function]):
-        if isinstance(expr, Function):
-            _expr = expr
-        else:
-            _expr = ToTsQuery(expr)
-        super().__init__(Comp.search, ToTsVector(config_name=_expr.config_name, field=field), _expr)
+        if not isinstance(expr, Function):
+            expr = ToTsQuery(expr)
+        super().__init__(Comp.search, ToTsVector(config_name=expr.args[0].value, field=field), expr)
