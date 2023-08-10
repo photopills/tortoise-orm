@@ -24,12 +24,24 @@ if TYPE_CHECKING:  # pragma: nocoverage
 
 VALUE = TypeVar("VALUE")
 
-# TODO: Replace this with an enum
-CASCADE = "CASCADE"
-RESTRICT = "RESTRICT"
-SET_NULL = "SET NULL"
-SET_DEFAULT = "SET DEFAULT"
-NO_ACTION = "NO ACTION"
+
+class StrEnum(str, Enum):
+    __str__ = str.__str__
+
+
+class OnDelete(StrEnum):
+    CASCADE = "CASCADE"
+    RESTRICT = "RESTRICT"
+    SET_NULL = "SET NULL"
+    SET_DEFAULT = "SET DEFAULT"
+    NO_ACTION = "NO ACTION"
+
+
+CASCADE = OnDelete.CASCADE
+RESTRICT = OnDelete.RESTRICT
+SET_NULL = OnDelete.SET_NULL
+SET_DEFAULT = OnDelete.SET_DEFAULT
+NO_ACTION = OnDelete.NO_ACTION
 
 
 class _FieldMeta(type):
@@ -141,20 +153,26 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
     GENERATED_SQL: str = None  # type: ignore
 
     # These methods are just to make IDE/Linters happy:
+    if TYPE_CHECKING:
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "Field[VALUE]":
-        return super().__new__(cls)
+        def __new__(cls, *args: Any, **kwargs: Any) -> "Field[VALUE]":
+            return super().__new__(cls)
 
-    @overload
-    def __get__(self, instance: None, owner: Type["Model"]) -> "Field[VALUE]":
-        ...
+        @overload
+        def __get__(self, instance: None, owner: Type["Model"]) -> "Field[VALUE]":
+            ...
 
-    @overload
-    def __get__(self, instance: "Model", owner: Type["Model"]) -> VALUE:
-        ...
+        @overload
+        def __get__(self, instance: "Model", owner: Type["Model"]) -> VALUE:
+            ...
 
-    def __get__(self, instance: Optional["Model"], owner: Type["Model"]):
-        ...
+        def __get__(
+            self, instance: Optional["Model"], owner: Type["Model"]
+        ) -> "Field[VALUE] | VALUE":
+            ...
+
+        def __set__(self, instance: "Model", value: VALUE) -> None:
+            ...
 
     def __init__(
         self,

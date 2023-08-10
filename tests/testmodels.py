@@ -11,10 +11,11 @@ from enum import Enum, IntEnum
 from typing import List, Union
 
 import pytz
-from pydantic import Extra as PydanticExtra
+from pydantic import ConfigDict
 
 from tortoise import fields
-from tortoise.exceptions import NoValuesFetched, ValidationError
+from tortoise.exceptions import ValidationError
+from tortoise.fields import NO_ACTION
 from tortoise.manager import Manager
 from tortoise.models import Model
 from tortoise.queryset import QuerySet
@@ -121,7 +122,7 @@ class Tree(Model):
         "models.Node", related_name="parent_trees"
     )
     child: fields.ForeignKeyRelation[Node] = fields.ForeignKeyField(
-        "models.Node", related_name="children_trees"
+        "models.Node", related_name="children_trees", on_delete=NO_ACTION
     )
 
 
@@ -140,7 +141,7 @@ class Dest_null(Model):
 
 class O2O_null(Model):
     name = fields.CharField(max_length=64)
-    event: fields.OneToOneRelation[Event] = fields.OneToOneField(
+    event: fields.OneToOneNullableRelation[Event] = fields.OneToOneField(
         "models.Dest_null", on_delete=fields.CASCADE, related_name="address_null", null=True
     )
 
@@ -377,7 +378,7 @@ class UUIDFkRelatedNullModel(Model):
         "models.UUIDPkModel", related_name=False, null=True
     )
     parent: fields.OneToOneNullableRelation[UUIDPkModel] = fields.OneToOneField(
-        "models.UUIDPkModel", related_name=False, null=True
+        "models.UUIDPkModel", related_name=False, null=True, on_delete=NO_ACTION
     )
 
 
@@ -483,12 +484,12 @@ class Employee(Model):
     name = fields.CharField(max_length=50)
 
     manager: fields.ForeignKeyNullableRelation["Employee"] = fields.ForeignKeyField(
-        "models.Employee", related_name="team_members", null=True
+        "models.Employee", related_name="team_members", null=True, on_delete=NO_ACTION
     )
     team_members: fields.ReverseRelation["Employee"]
 
     talks_to: fields.ManyToManyRelation["Employee"] = fields.ManyToManyField(
-        "models.Employee", related_name="gets_talked_to", on_delete=fields.NO_ACTION
+        "models.Employee", related_name="gets_talked_to", on_delete=NO_ACTION
     )
     gets_talked_to: fields.ManyToManyRelation["Employee"]
 
@@ -555,7 +556,7 @@ class Employee(Model):
         """
         try:
             return len(self.team_members)
-        except NoValuesFetched:
+        except AttributeError:
             return 0
 
     def not_annotated(self):
@@ -578,12 +579,20 @@ class StraightFields(Model):
     nullable = fields.CharField(max_length=50, null=True)
 
     fk: fields.ForeignKeyNullableRelation["StraightFields"] = fields.ForeignKeyField(
-        "models.StraightFields", related_name="fkrev", null=True, description="Tree!"
+        "models.StraightFields",
+        related_name="fkrev",
+        null=True,
+        description="Tree!",
+        on_delete=NO_ACTION,
     )
     fkrev: fields.ReverseRelation["StraightFields"]
 
     o2o: fields.OneToOneNullableRelation["StraightFields"] = fields.OneToOneField(
-        "models.StraightFields", related_name="o2o_rev", null=True, description="Line"
+        "models.StraightFields",
+        related_name="o2o_rev",
+        null=True,
+        description="Line",
+        on_delete=NO_ACTION,
     )
     o2o_rev: fields.Field
 
@@ -620,6 +629,7 @@ class SourceFields(Model):
         null=True,
         source_field="fk_sometable",
         description="Tree!",
+        on_delete=NO_ACTION,
     )
     fkrev: fields.ReverseRelation["SourceFields"]
 
@@ -629,6 +639,7 @@ class SourceFields(Model):
         null=True,
         source_field="o2o_sometable",
         description="Line",
+        on_delete=NO_ACTION,
     )
     o2o_rev: fields.Field
 
@@ -668,11 +679,11 @@ class EnumFields(Model):
 
 class DoubleFK(Model):
     name = fields.CharField(max_length=50)
-    left: fields.ForeignKeyRelation["DoubleFK"] = fields.ForeignKeyField(
-        "models.DoubleFK", null=True, related_name="left_rel"
+    left: fields.ForeignKeyNullableRelation["DoubleFK"] = fields.ForeignKeyField(
+        "models.DoubleFK", null=True, related_name="left_rel", on_delete=NO_ACTION
     )
-    right: fields.ForeignKeyRelation["DoubleFK"] = fields.ForeignKeyField(
-        "models.DoubleFK", null=True, related_name="right_rel"
+    right: fields.ForeignKeyNullableRelation["DoubleFK"] = fields.ForeignKeyField(
+        "models.DoubleFK", null=True, related_name="right_rel", on_delete=NO_ACTION
     )
 
 
@@ -835,7 +846,7 @@ class Single(Model):
     """
 
     id = fields.IntField(pk=True)
-    extra: fields.ForeignKeyRelation[Extra] = fields.ForeignKeyField(
+    extra: fields.ForeignKeyNullableRelation[Extra] = fields.ForeignKeyField(
         "models.Extra", related_name="singles", null=True
     )
 
@@ -846,12 +857,17 @@ class Pair(Model):
     """
 
     id = fields.IntField(pk=True)
-    left: fields.ForeignKeyRelation[Single] = fields.ForeignKeyField(
+    left: fields.ForeignKeyNullableRelation[Single] = fields.ForeignKeyField(
         "models.Single", related_name="lefts", null=True
     )
-    right: fields.ForeignKeyRelation[Single] = fields.ForeignKeyField(
-        "models.Single", related_name="rights", null=True
+    right: fields.ForeignKeyNullableRelation[Single] = fields.ForeignKeyField(
+        "models.Single", related_name="rights", null=True, on_delete=NO_ACTION
     )
+
+
+def camelize_var(var_name: str):
+    var_parts: List[str] = var_name.split("_")
+    return var_parts[0] + "".join([part.title() for part in var_parts[1:]])
 
 
 class CamelCaseAliasPerson(Model):
@@ -869,17 +885,9 @@ class CamelCaseAliasPerson(Model):
     class PydanticMeta:
         """Defines the default config for pydantic model generator."""
 
-        class PydanticConfig:
-            """Defines the default pydantic config for the model."""
-
-            @staticmethod
-            def camelize_var(var_name: str):
-                var_parts: List[str] = var_name.split("_")
-                return var_parts[0] + "".join([part.title() for part in var_parts[1:]])
-
-            title = "My custom title"
-            extra = PydanticExtra.ignore
-            alias_generator = camelize_var
-            allow_population_by_field_name = True
-
-        config_class = PydanticConfig
+        model_config = ConfigDict(
+            title="My custom title",
+            extra="ignore",
+            alias_generator=camelize_var,
+            populate_by_name=True,
+        )

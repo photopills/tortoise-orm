@@ -1,11 +1,12 @@
 # pylint: disable=E0611,E0401
 from typing import List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from models import User_Pydantic, UserIn_Pydantic, Users
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException
 
-from tortoise.contrib.fastapi import HTTPNotFoundError, register_tortoise
+from tortoise.contrib.fastapi import register_tortoise
 
 app = FastAPI(title="Tortoise ORM FastAPI example")
 
@@ -25,22 +26,18 @@ async def create_user(user: UserIn_Pydantic):
     return await User_Pydantic.from_tortoise_orm(user_obj)
 
 
-@app.get(
-    "/user/{user_id}", response_model=User_Pydantic, responses={404: {"model": HTTPNotFoundError}}
-)
+@app.get("/user/{user_id}", response_model=User_Pydantic)
 async def get_user(user_id: int):
     return await User_Pydantic.from_queryset_single(Users.get(id=user_id))
 
 
-@app.put(
-    "/user/{user_id}", response_model=User_Pydantic, responses={404: {"model": HTTPNotFoundError}}
-)
+@app.put("/user/{user_id}", response_model=User_Pydantic)
 async def update_user(user_id: int, user: UserIn_Pydantic):
     await Users.filter(id=user_id).update(**user.dict(exclude_unset=True))
     return await User_Pydantic.from_queryset_single(Users.get(id=user_id))
 
 
-@app.delete("/user/{user_id}", response_model=Status, responses={404: {"model": HTTPNotFoundError}})
+@app.delete("/user/{user_id}", response_model=Status)
 async def delete_user(user_id: int):
     deleted_count = await Users.filter(id=user_id).delete()
     if not deleted_count:

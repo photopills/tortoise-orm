@@ -1,9 +1,10 @@
 from types import ModuleType
 from typing import Dict, Iterable, Optional, Union
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from pydantic import BaseModel  # pylint: disable=E0611
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from tortoise import Tortoise, connections
 from tortoise.exceptions import DoesNotExist, IntegrityError
