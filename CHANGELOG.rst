@@ -18,6 +18,7 @@ Added
 
 Fixed
 ^^^^^
+- Fix pydantic v2 pydantic_model_creator nullable field not optional. (#1454)
 - Fix foreign key constraint not generated on MSSQL Server. (#1400)
 - Fix testcase error with python3.11 (#1308)
 
