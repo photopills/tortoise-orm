@@ -359,11 +359,13 @@ def pydantic_model_creator(
             if model:
                 if fdesc.get("nullable"):
                     json_schema_extra["nullable"] = True
+                    # set default_factory to None in the field config
+                    fconfig["default_factory"] = lambda: None
                 if fdesc.get("nullable") or field_default is not None:
                     model = Optional[model]  # type: ignore
 
-                properties[fname] = model
-
+                # create property with that config
+                properties[fname] = (model, Field(**fconfig))
         # Backward FK and ManyToMany fields are list of embedded schemas
         elif (
             field_type is relational.BackwardFKRelation
