@@ -30,15 +30,6 @@ class PlainToTsQuery(Function):  # type: ignore
         super(PlainToTsQuery, self).__init__("PLAINTO_TSQUERY", config_name, field)
 
 
-class PlainToTsQuery(Function):  # type: ignore
-    """
-    plainto_tsquery function
-    """
-
-    def __init__(self, field: Term):
-        super(PlainToTsQuery, self).__init__("PLAINTO_TSQUERY", field)
-
-
 class Random(Function):  # type: ignore
     """
     Generate random number.
