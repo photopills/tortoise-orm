@@ -44,7 +44,7 @@ class TestDescribeModel(test.SimpleTestCase):
     maxDiff = None
 
     def test_describe_field_noninit_ser(self):
-        field = fields.IntField(pk=True)
+        field = fields.IntField(primary_key=True)
         self.assertEqual(
             field.describe(serializable=True),
             {
@@ -60,12 +60,12 @@ class TestDescribeModel(test.SimpleTestCase):
                 "default": None,
                 "description": None,
                 "docstring": None,
-                "constraints": {"ge": 1, "le": 2147483647},
+                "constraints": {"ge": -2147483648, "le": 2147483647},
             },
         )
 
     def test_describe_field_noninit(self):
-        field = fields.IntField(pk=True)
+        field = fields.IntField(primary_key=True)
         self.assertEqual(
             field.describe(serializable=False),
             {
@@ -81,7 +81,7 @@ class TestDescribeModel(test.SimpleTestCase):
                 "default": None,
                 "description": None,
                 "docstring": None,
-                "constraints": {"ge": 1, "le": 2147483647},
+                "constraints": {"ge": -2147483648, "le": 2147483647},
             },
         )
 
@@ -161,7 +161,7 @@ class TestDescribeModel(test.SimpleTestCase):
                     "default": None,
                     "description": "Da PK",
                     "docstring": None,
-                    "constraints": {"ge": 1, "le": 2147483647},
+                    "constraints": {"ge": -2147483648, "le": 2147483647},
                 },
                 "data_fields": [
                     {
@@ -222,7 +222,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "default": None,
                         "description": "Tree!",
                         "docstring": None,
-                        "constraints": {"ge": 1, "le": 2147483647},
+                        "constraints": {"ge": -2147483648, "le": 2147483647},
                     },
                     {
                         "db_column": "o2o_id",
@@ -237,7 +237,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "nullable": True,
                         "python_type": "int",
                         "unique": True,
-                        "constraints": {"ge": 1, "le": 2147483647},
+                        "constraints": {"ge": -2147483648, "le": 2147483647},
                     },
                 ],
                 "fk_fields": [
@@ -249,7 +249,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "generated": False,
                         "nullable": True,
                         "unique": False,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "indexed": False,
                         "default": None,
                         "description": "Tree!",
@@ -284,7 +284,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "indexed": True,
                         "name": "o2o",
                         "nullable": True,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "python_type": "models.StraightFields",
                         "raw_field": "o2o_id",
                         "unique": True,
@@ -381,7 +381,7 @@ class TestDescribeModel(test.SimpleTestCase):
                     "default": None,
                     "description": "Da PK",
                     "docstring": None,
-                    "constraints": {"ge": 1, "le": 2147483647},
+                    "constraints": {"ge": -2147483648, "le": 2147483647},
                 },
                 "data_fields": [
                     {
@@ -442,7 +442,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "default": None,
                         "description": "Tree!",
                         "docstring": None,
-                        "constraints": {"ge": 1, "le": 2147483647},
+                        "constraints": {"ge": -2147483648, "le": 2147483647},
                     },
                     {
                         "name": "o2o_id",
@@ -457,7 +457,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "default": None,
                         "description": "Line",
                         "docstring": None,
-                        "constraints": {"ge": 1, "le": 2147483647},
+                        "constraints": {"ge": -2147483648, "le": 2147483647},
                     },
                 ],
                 "fk_fields": [
@@ -468,7 +468,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "python_type": StraightFields,
                         "generated": False,
                         "nullable": True,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "unique": False,
                         "indexed": False,
                         "default": None,
@@ -504,7 +504,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "indexed": True,
                         "name": "o2o",
                         "nullable": True,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "python_type": StraightFields,
                         "raw_field": "o2o_id",
                         "unique": True,
@@ -601,7 +601,7 @@ class TestDescribeModel(test.SimpleTestCase):
                     "default": None,
                     "description": "Da PK",
                     "docstring": None,
-                    "constraints": {"ge": 1, "le": 2147483647},
+                    "constraints": {"ge": -2147483648, "le": 2147483647},
                 },
                 "data_fields": [
                     {
@@ -662,7 +662,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "default": None,
                         "description": "Tree!",
                         "docstring": None,
-                        "constraints": {"ge": 1, "le": 2147483647},
+                        "constraints": {"ge": -2147483648, "le": 2147483647},
                     },
                     {
                         "name": "o2o_id",
@@ -677,7 +677,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "default": None,
                         "description": "Line",
                         "docstring": None,
-                        "constraints": {"ge": 1, "le": 2147483647},
+                        "constraints": {"ge": -2147483648, "le": 2147483647},
                     },
                 ],
                 "fk_fields": [
@@ -688,7 +688,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "python_type": "models.SourceFields",
                         "generated": False,
                         "nullable": True,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "unique": False,
                         "indexed": False,
                         "default": None,
@@ -724,7 +724,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "indexed": True,
                         "name": "o2o",
                         "nullable": True,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "python_type": "models.SourceFields",
                         "raw_field": "o2o_id",
                         "unique": True,
@@ -821,7 +821,7 @@ class TestDescribeModel(test.SimpleTestCase):
                     "default": None,
                     "description": "Da PK",
                     "docstring": None,
-                    "constraints": {"ge": 1, "le": 2147483647},
+                    "constraints": {"ge": -2147483648, "le": 2147483647},
                 },
                 "data_fields": [
                     {
@@ -882,7 +882,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "default": None,
                         "description": "Tree!",
                         "docstring": None,
-                        "constraints": {"ge": 1, "le": 2147483647},
+                        "constraints": {"ge": -2147483648, "le": 2147483647},
                     },
                     {
                         "name": "o2o_id",
@@ -897,7 +897,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "default": None,
                         "description": "Line",
                         "docstring": None,
-                        "constraints": {"ge": 1, "le": 2147483647},
+                        "constraints": {"ge": -2147483648, "le": 2147483647},
                     },
                 ],
                 "fk_fields": [
@@ -909,7 +909,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "generated": False,
                         "nullable": True,
                         "unique": False,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "indexed": False,
                         "default": None,
                         "description": "Tree!",
@@ -944,7 +944,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "indexed": True,
                         "name": "o2o",
                         "nullable": True,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "python_type": SourceFields,
                         "raw_field": "o2o_id",
                         "unique": True,
@@ -1253,7 +1253,7 @@ class TestDescribeModel(test.SimpleTestCase):
                         "indexed": True,
                         "name": "parent",
                         "nullable": True,
-                        "on_delete": "CASCADE",
+                        "on_delete": "NO ACTION",
                         "python_type": "models.UUIDPkModel",
                         "raw_field": "parent_id",
                         "unique": True,
@@ -1309,7 +1309,7 @@ class TestDescribeModel(test.SimpleTestCase):
                     "default": None,
                     "description": None,
                     "docstring": None,
-                    "constraints": {"ge": 1, "le": 2147483647},
+                    "constraints": {"ge": -2147483648, "le": 2147483647},
                 },
                 "data_fields": [
                     {
@@ -1428,7 +1428,7 @@ class TestDescribeModel(test.SimpleTestCase):
                     "default": None,
                     "description": None,
                     "docstring": None,
-                    "constraints": {"ge": 1, "le": 2147483647},
+                    "constraints": {"ge": -2147483648, "le": 2147483647},
                 },
                 "data_fields": [
                     {

@@ -6,12 +6,16 @@ import pytz
 from pypika.terms import Function
 
 from tests.testmodels import (
+    Currency,
     DatetimeFields,
     DefaultUpdate,
+    EnumFields,
     Event,
     IntFields,
     JSONFields,
+    Service,
     SmallIntFields,
+    SourceFieldPk,
     Tournament,
     UUIDFields,
 )
@@ -65,6 +69,18 @@ class TestUpdate(test.TestCase):
         self.assertEqual((await UUIDFields.get(pk=objs[0].pk)).data, objs[0].data)
         self.assertEqual((await UUIDFields.get(pk=objs[1].pk)).data, objs[1].data)
 
+    async def test_bulk_renamed_pk_source_field(self):
+        objs = [
+            await SourceFieldPk.create(name="Model 1"),
+            await SourceFieldPk.create(name="Model 2"),
+        ]
+        objs[0].name = "Model 3"
+        objs[1].name = "Model 4"
+        rows_affected = await SourceFieldPk.bulk_update(objs, fields=["name"])
+        self.assertEqual(rows_affected, 2)
+        self.assertEqual((await SourceFieldPk.get(pk=objs[0].pk)).name, objs[0].name)
+        self.assertEqual((await SourceFieldPk.get(pk=objs[1].pk)).name, objs[1].name)
+
     async def test_bulk_update_json_value(self):
         objs = [
             await JSONFields.create(data={}),
@@ -89,6 +105,20 @@ class TestUpdate(test.TestCase):
         self.assertEqual(rows_affected, 2)
         self.assertEqual((await SmallIntFields.get(pk=objs[0].pk)).smallintnum_null, None)
         self.assertEqual((await SmallIntFields.get(pk=objs[1].pk)).smallintnum_null, None)
+
+    async def test_bulk_update_custom_field(self):
+        objs = [
+            await EnumFields.create(service=Service.python_programming, currency=Currency.EUR),
+            await EnumFields.create(service=Service.database_design, currency=Currency.USD),
+        ]
+        objs[0].currency = Currency.USD
+        objs[1].service = Service.system_administration
+        rows_affected = await EnumFields.bulk_update(objs, fields=["service", "currency"])
+        self.assertEqual(rows_affected, 2)
+        self.assertEqual((await EnumFields.get(pk=objs[0].pk)).currency, Currency.USD)
+        self.assertEqual(
+            (await EnumFields.get(pk=objs[1].pk)).service, Service.system_administration
+        )
 
     async def test_update_auto_now(self):
         obj = await DefaultUpdate.create()

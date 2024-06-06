@@ -27,6 +27,7 @@ from tortoise.fields.relational import (
     ForeignKeyFieldInstance,
     RelationalField,
 )
+from tortoise.filters import FilterInfoDict
 from tortoise.query_utils import QueryModifier, _get_joins_for_related_field
 
 if TYPE_CHECKING:  # pragma: nocoverage
@@ -154,14 +155,14 @@ class Q(Expression):
         #: Contains the sub-Q's that this Q is made up of
         self.children: Tuple[Q, ...] = args
         #: Contains the filters applied to this Q
-        self.filters: Dict[str, Any] = kwargs
+        self.filters: Dict[str, FilterInfoDict] = kwargs
         if join_type not in {self.AND, self.OR}:
             raise OperationalError("join_type must be AND or OR")
         #: Specifies if this Q does an AND or OR on its children
         self.join_type = join_type
         self._is_negated = False
         self._annotations: Dict[str, Any] = {}
-        self._custom_filters: Dict[str, Dict[str, Any]] = {}
+        self._custom_filters: Dict[str, FilterInfoDict] = {}
 
     def __and__(self, other: "Q") -> "Q":
         """
@@ -190,6 +191,15 @@ class Q(Expression):
         q = Q(*self.children, join_type=self.join_type, **self.filters)
         q.negate()
         return q
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Q):
+            return False
+        return (
+            self.children == other.children
+            and self.join_type == other.join_type
+            and self.filters == other.filters
+        )
 
     def negate(self) -> None:
         """

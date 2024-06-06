@@ -54,7 +54,7 @@ Optional Accelerators
 ---------------------
 The following libraries can be used as accelerators:
 
-* `python-rapidjson <https://pypi.org/project/python-rapidjson/>`_: Automatically used if installed for JSON SerDes.
+* `orjson <https://pypi.org/project/orjson/>`_: Automatically used if installed for JSON SerDes.
 * `uvloop <https://pypi.org/project/uvloop/>`_: Shown to improve performance, but needs to be set up.
   Please look at ``uvloop`` documentation for more info.
   If you use a framework, it may already use it.
@@ -84,7 +84,7 @@ You can start writing models like this:
     class Tournament(Model):
         # Defining `id` field is optional, it will be defined automatically
         # if you haven't done it yourself
-        id = fields.IntField(pk=True)
+        id = fields.IntField(primary_key=True)
         name = fields.CharField(max_length=255)
 
         # Defining ``__str__`` is also optional, but gives you pretty
@@ -94,7 +94,7 @@ You can start writing models like this:
 
 
     class Event(Model):
-        id = fields.IntField(pk=True)
+        id = fields.IntField(primary_key=True)
         name = fields.CharField(max_length=255)
         # References to other models are defined in format
         # "{app_name}.{model_name}" - where {app_name} is defined in tortoise config
@@ -106,7 +106,7 @@ You can start writing models like this:
 
 
     class Team(Model):
-        id = fields.IntField(pk=True)
+        id = fields.IntField(primary_key=True)
         name = fields.CharField(max_length=255)
 
         def __str__(self):

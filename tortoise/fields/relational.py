@@ -7,6 +7,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
     Type,
     TypeVar,
     Union,
@@ -17,7 +18,7 @@ from pypika import Table
 from typing_extensions import Literal
 
 from tortoise.exceptions import ConfigurationError, NoValuesFetched, OperationalError
-from tortoise.fields.base import CASCADE, RESTRICT, SET_NULL, Field
+from tortoise.fields.base import CASCADE, SET_NULL, Field, OnDelete
 
 if TYPE_CHECKING:  # pragma: nocoverage
     from tortoise.backends.base.client import BaseDBAsyncClient
@@ -96,7 +97,6 @@ class ReverseRelation(Generic[MODEL]):
     async def __aiter__(self) -> AsyncGenerator[Any, MODEL]:
         if not self._fetched:
             self._set_result_for_query(await self)
-
         for val in self.related_objects:
             yield val
 
@@ -165,74 +165,42 @@ class ManyToManyRelation(ReverseRelation[MODEL]):
             return
         if not self.instance._saved_in_db:
             raise OperationalError(f"You should first call .save() on {self.instance}")
-        db = using_db if using_db else self.remote_model._meta.db
+        db = using_db or self.remote_model._meta.db
         pk_formatting_func = type(self.instance)._meta.pk.to_db_value
         related_pk_formatting_func = type(instances[0])._meta.pk.to_db_value
-        through_table = Table(self.field.through)
-        select_query = (
-            db.query_class.from_(through_table)
-            .where(
-                through_table[self.field.backward_key]
-                == pk_formatting_func(self.instance.pk, self.instance)
-            )
-            .select(self.field.backward_key, self.field.forward_key)
-        )
-        query = db.query_class.into(through_table).columns(
-            through_table[self.field.forward_key],
-            through_table[self.field.backward_key],
-        )
-
-        if len(instances) == 1:
-            criterion = through_table[self.field.forward_key] == related_pk_formatting_func(
-                instances[0].pk, instances[0]
-            )
-        else:
-            criterion = through_table[self.field.forward_key].isin(
-                [related_pk_formatting_func(i.pk, i) for i in instances]
-            )
-
-        select_query = select_query.where(criterion)
-
-        # TODO: This is highly inefficient. Should use UNIQUE index by default.
-        #  And optionally allow duplicates.
-        _, already_existing_relations_raw = await db.execute_query(str(select_query))
-        already_existing_relations = {
-            (
-                pk_formatting_func(r[self.field.backward_key], self.instance),
-                related_pk_formatting_func(r[self.field.forward_key], self.instance),
-            )
-            for r in already_existing_relations_raw
-        }
-
-        insert_is_required = False
+        pk_b = pk_formatting_func(self.instance.pk, self.instance)
+        pks_f: list = []
         for instance_to_add in instances:
             if not instance_to_add._saved_in_db:
                 raise OperationalError(f"You should first call .save() on {instance_to_add}")
             pk_f = related_pk_formatting_func(instance_to_add.pk, instance_to_add)
-            pk_b = pk_formatting_func(self.instance.pk, self.instance)
-            if (pk_b, pk_f) in already_existing_relations:
-                continue
-            query = query.insert(pk_f, pk_b)
-            insert_is_required = True
-        if insert_is_required:
+            pks_f.append(pk_f)
+        through_table = Table(self.field.through)
+        backward_key, forward_key = self.field.backward_key, self.field.forward_key
+        backward_field, forward_field = through_table[backward_key], through_table[forward_key]
+        select_query = (
+            db.query_class.from_(through_table).where(backward_field == pk_b).select(forward_key)
+        )
+        criterion = forward_field == pks_f[0] if len(pks_f) == 1 else forward_field.isin(pks_f)
+        select_query = select_query.where(criterion)
+
+        _, already_existing_relations_raw = await db.execute_query(str(select_query))
+        already_existing_forward_pks = {
+            related_pk_formatting_func(r[forward_key], self.instance)
+            for r in already_existing_relations_raw
+        }
+
+        if pks_f_to_insert := set(pks_f) - already_existing_forward_pks:
+            query = db.query_class.into(through_table).columns(forward_field, backward_field)
+            for pk_f in pks_f_to_insert:
+                query = query.insert(pk_f, pk_b)
             await db.execute_query(str(query))
 
     async def clear(self, using_db: "Optional[BaseDBAsyncClient]" = None) -> None:
         """
         Clears ALL relations.
         """
-        db = using_db if using_db else self.remote_model._meta.db
-        through_table = Table(self.field.through)
-        pk_formatting_func = type(self.instance)._meta.pk.to_db_value
-        query = (
-            db.query_class.from_(through_table)
-            .where(
-                through_table[self.field.backward_key]
-                == pk_formatting_func(self.instance.pk, self.instance)
-            )
-            .delete()
-        )
-        await db.execute_query(str(query))
+        await self._remove_or_clear(using_db=using_db)
 
     async def remove(
         self, *instances: MODEL, using_db: "Optional[BaseDBAsyncClient]" = None
@@ -242,30 +210,32 @@ class ManyToManyRelation(ReverseRelation[MODEL]):
 
         :raises OperationalError: remove() was called with no instances.
         """
-        db = using_db if using_db else self.remote_model._meta.db
         if not instances:
             raise OperationalError("remove() called on no instances")
+        await self._remove_or_clear(instances, using_db)
+
+    async def _remove_or_clear(
+        self,
+        instances: Optional[Tuple[MODEL, ...]] = None,
+        using_db: "Optional[BaseDBAsyncClient]" = None,
+    ) -> None:
+        db = using_db or self.remote_model._meta.db
         through_table = Table(self.field.through)
         pk_formatting_func = type(self.instance)._meta.pk.to_db_value
-        related_pk_formatting_func = type(instances[0])._meta.pk.to_db_value
 
-        if len(instances) == 1:
-            condition = (
-                through_table[self.field.forward_key]
-                == related_pk_formatting_func(instances[0].pk, instances[0])
-            ) & (
-                through_table[self.field.backward_key]
-                == pk_formatting_func(self.instance.pk, self.instance)
-            )
-        else:
-            condition = (
-                through_table[self.field.backward_key]
-                == pk_formatting_func(self.instance.pk, self.instance)
-            ) & (
-                through_table[self.field.forward_key].isin(
+        condition = through_table[self.field.backward_key] == pk_formatting_func(
+            self.instance.pk, self.instance
+        )
+        if instances:
+            related_pk_formatting_func = type(instances[0])._meta.pk.to_db_value
+            if len(instances) == 1:
+                condition &= through_table[self.field.forward_key] == related_pk_formatting_func(
+                    instances[0].pk, instances[0]
+                )
+            else:
+                condition &= through_table[self.field.forward_key].isin(
                     [related_pk_formatting_func(i.pk, i) for i in instances]
                 )
-            )
         query = db.query_class.from_(through_table).where(condition).delete()
         await db.execute_query(str(query))
 
@@ -286,16 +256,19 @@ class RelationalField(Field[MODEL]):
         self.to_field_instance: Field = None  # type: ignore
         self.db_constraint = db_constraint
 
-    @overload
-    def __get__(self, instance: None, owner: Type["Model"]) -> "RelationalField[MODEL]":
-        ...
+    if TYPE_CHECKING:
 
-    @overload
-    def __get__(self, instance: "Model", owner: Type["Model"]) -> MODEL:
-        ...
+        @overload
+        def __get__(self, instance: None, owner: Type["Model"]) -> "RelationalField[MODEL]": ...
 
-    def __get__(self, instance: Optional["Model"], owner: Type["Model"]):
-        ...
+        @overload
+        def __get__(self, instance: "Model", owner: Type["Model"]) -> MODEL: ...
+
+        def __get__(
+            self, instance: Optional["Model"], owner: Type["Model"]
+        ) -> "RelationalField[MODEL] | MODEL": ...
+
+        def __set__(self, instance: "Model", value: MODEL) -> None: ...
 
     def describe(self, serializable: bool) -> dict:
         desc = super().describe(serializable)
@@ -303,22 +276,29 @@ class RelationalField(Field[MODEL]):
         del desc["db_column"]
         return desc
 
+    @classmethod
+    def validate_model_name(cls, model_name: str) -> None:
+        if len(model_name.split(".")) != 2:
+            field_type = cls.__name__.replace("Instance", "")
+            raise ConfigurationError(f'{field_type} accepts model name in format "app.Model"')
+
 
 class ForeignKeyFieldInstance(RelationalField[MODEL]):
     def __init__(
         self,
         model_name: str,
         related_name: Union[Optional[str], Literal[False]] = None,
-        on_delete: str = CASCADE,
+        on_delete: OnDelete = CASCADE,
         **kwargs: Any,
     ) -> None:
         super().__init__(None, **kwargs)  # type: ignore
-        if len(model_name.split(".")) != 2:
-            raise ConfigurationError('Foreign key accepts model name in format "app.Model"')
+        self.validate_model_name(model_name)
         self.model_name = model_name
         self.related_name = related_name
-        if on_delete not in {CASCADE, RESTRICT, SET_NULL}:
-            raise ConfigurationError("on_delete can only be CASCADE, RESTRICT or SET_NULL")
+        if on_delete not in set(OnDelete):
+            raise ConfigurationError(
+                "on_delete can only be CASCADE, RESTRICT, SET_NULL, SET_DEFAULT or NO_ACTION"
+            )
         if on_delete == SET_NULL and not bool(kwargs.get("null")):
             raise ConfigurationError("If on_delete is SET_NULL, then field must have null=True set")
         self.on_delete = on_delete
@@ -326,7 +306,7 @@ class ForeignKeyFieldInstance(RelationalField[MODEL]):
     def describe(self, serializable: bool) -> dict:
         desc = super().describe(serializable)
         desc["raw_field"] = self.source_field
-        desc["on_delete"] = self.on_delete
+        desc["on_delete"] = str(self.on_delete)
         return desc
 
 
@@ -351,11 +331,10 @@ class OneToOneFieldInstance(ForeignKeyFieldInstance[MODEL]):
         self,
         model_name: str,
         related_name: Union[Optional[str], Literal[False]] = None,
-        on_delete: str = CASCADE,
+        on_delete: OnDelete = CASCADE,
         **kwargs: Any,
     ) -> None:
-        if len(model_name.split(".")) != 2:
-            raise ConfigurationError('OneToOneField accepts model name in format "app.Model"')
+        self.validate_model_name(model_name)
         super().__init__(model_name, related_name, on_delete, unique=True, **kwargs)
 
 
@@ -373,15 +352,15 @@ class ManyToManyFieldInstance(RelationalField[MODEL]):
         forward_key: Optional[str] = None,
         backward_key: str = "",
         related_name: str = "",
-        on_delete: str = CASCADE,
+        on_delete: OnDelete = CASCADE,
         field_type: "Type[MODEL]" = None,  # type: ignore
+        create_unique_index: bool = True,
         **kwargs: Any,
     ) -> None:
         # TODO: rename through to through_table
         # TODO: add through to use a Model
         super().__init__(field_type, **kwargs)
-        if len(model_name.split(".")) != 2:
-            raise ConfigurationError('Foreign key accepts model name in format "app.Model"')
+        self.validate_model_name(model_name)
         self.model_name: str = model_name
         self.related_name: str = related_name
         self.forward_key: str = forward_key or f"{model_name.split('.')[1].lower()}_id"
@@ -389,6 +368,7 @@ class ManyToManyFieldInstance(RelationalField[MODEL]):
         self.through: str = through  # type: ignore
         self._generated: bool = False
         self.on_delete = on_delete
+        self.create_unique_index = create_unique_index
 
     def describe(self, serializable: bool) -> dict:
         desc = super().describe(serializable)
@@ -397,18 +377,42 @@ class ManyToManyFieldInstance(RelationalField[MODEL]):
         desc["forward_key"] = self.forward_key
         desc["backward_key"] = self.backward_key
         desc["through"] = self.through
-        desc["on_delete"] = self.on_delete
+        desc["on_delete"] = str(self.on_delete)
         desc["_generated"] = self._generated
         return desc
+
+
+@overload
+def OneToOneField(
+    model_name: str,
+    related_name: Union[Optional[str], Literal[False]] = None,
+    on_delete: OnDelete = CASCADE,
+    db_constraint: bool = True,
+    *,
+    null: Literal[True],
+    **kwargs: Any,
+) -> "OneToOneNullableRelation[MODEL]": ...
+
+
+@overload
+def OneToOneField(
+    model_name: str,
+    related_name: Union[Optional[str], Literal[False]] = None,
+    on_delete: OnDelete = CASCADE,
+    db_constraint: bool = True,
+    null: Literal[False] = False,
+    **kwargs: Any,
+) -> "OneToOneRelation[MODEL]": ...
 
 
 def OneToOneField(
     model_name: str,
     related_name: Union[Optional[str], Literal[False]] = None,
-    on_delete: str = CASCADE,
+    on_delete: OnDelete = CASCADE,
     db_constraint: bool = True,
+    null: bool = False,
     **kwargs: Any,
-) -> "OneToOneRelation[MODEL]":
+) -> "OneToOneRelation[MODEL] | OneToOneNullableRelation[MODEL]":
     """
     OneToOne relation field.
 
@@ -438,6 +442,8 @@ def OneToOneField(
             ``field.SET_DEFAULT``:
                 Resets the field to ``default`` value in case the related model gets deleted.
                 Can only be set is field has a ``default`` set.
+            ``field.NO_ACTION``:
+                Take no action.
     ``to_field``:
         The attribute name on the related model to establish foreign key relationship.
         If not set, pk is used
@@ -447,17 +453,41 @@ def OneToOneField(
     """
 
     return OneToOneFieldInstance(
-        model_name, related_name, on_delete, db_constraint=db_constraint, **kwargs
+        model_name, related_name, on_delete, db_constraint=db_constraint, null=null, **kwargs
     )
+
+
+@overload
+def ForeignKeyField(
+    model_name: str,
+    related_name: Union[Optional[str], Literal[False]] = None,
+    on_delete: OnDelete = CASCADE,
+    db_constraint: bool = True,
+    *,
+    null: Literal[True],
+    **kwargs: Any,
+) -> "ForeignKeyNullableRelation[MODEL]": ...
+
+
+@overload
+def ForeignKeyField(
+    model_name: str,
+    related_name: Union[Optional[str], Literal[False]] = None,
+    on_delete: OnDelete = CASCADE,
+    db_constraint: bool = True,
+    null: Literal[False] = False,
+    **kwargs: Any,
+) -> "ForeignKeyRelation[MODEL]": ...
 
 
 def ForeignKeyField(
     model_name: str,
     related_name: Union[Optional[str], Literal[False]] = None,
-    on_delete: str = CASCADE,
+    on_delete: OnDelete = CASCADE,
     db_constraint: bool = True,
+    null: bool = False,
     **kwargs: Any,
-) -> "ForeignKeyRelation[MODEL]":
+) -> "ForeignKeyRelation[MODEL] | ForeignKeyNullableRelation[MODEL]":
     """
     ForeignKey relation field.
 
@@ -487,6 +517,8 @@ def ForeignKeyField(
             ``field.SET_DEFAULT``:
                 Resets the field to ``default`` value in case the related model gets deleted.
                 Can only be set is field has a ``default`` set.
+            ``field.NO_ACTION``:
+                Take no action.
     ``to_field``:
         The attribute name on the related model to establish foreign key relationship.
         If not set, pk is used
@@ -496,7 +528,7 @@ def ForeignKeyField(
     """
 
     return ForeignKeyFieldInstance(
-        model_name, related_name, on_delete, db_constraint=db_constraint, **kwargs
+        model_name, related_name, on_delete, db_constraint=db_constraint, null=null, **kwargs
     )
 
 
@@ -506,10 +538,11 @@ def ManyToManyField(
     forward_key: Optional[str] = None,
     backward_key: str = "",
     related_name: str = "",
-    on_delete: str = CASCADE,
+    on_delete: OnDelete = CASCADE,
     db_constraint: bool = True,
+    create_unique_index: bool = True,
     **kwargs: Any,
-) -> "ManyToManyRelation[MODEL]":
+) -> "ManyToManyRelation[Any]":
     """
     ManyToMany relation field.
 
@@ -551,6 +584,11 @@ def ManyToManyField(
             ``field.SET_DEFAULT``:
                 Resets the field to ``default`` value in case the related model gets deleted.
                 Can only be set is field has a ``default`` set.
+            ``field.NO_ACTION``:
+                Take no action.
+    ``create_unique_index``:
+        Controls whether or not a unique index should be created in the database to speed up select queries.
+        The default is True. If you want to allow repeat records, set this to False.
     """
 
     return ManyToManyFieldInstance(  # type: ignore
@@ -561,6 +599,7 @@ def ManyToManyField(
         related_name,
         on_delete=on_delete,
         db_constraint=db_constraint,
+        create_unique_index=create_unique_index,
         **kwargs,
     )
 
