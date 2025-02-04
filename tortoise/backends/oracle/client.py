@@ -1,6 +1,6 @@
 import datetime
 import functools
-from typing import Any, SupportsInt, Union
+from typing import TYPE_CHECKING, Any, SupportsInt, Union, cast
 
 import pyodbc
 import pytz
@@ -11,7 +11,7 @@ except ImportError:  # pragma: nocoverage
     from iso8601 import parse_date
 
     parse_datetime = functools.partial(parse_date, default_timezone=None)
-from pypika import OracleQuery
+from pypika_tortoise import OracleQuery
 
 from tortoise.backends.base.client import (
     Capabilities,
@@ -27,6 +27,9 @@ from tortoise.backends.odbc.client import (
 )
 from tortoise.backends.oracle.executor import OracleExecutor
 from tortoise.backends.oracle.schema_generator import OracleSchemaGenerator
+
+if TYPE_CHECKING:  # pragma: nocoverage
+    import asyncodbc  # pylint: disable=W0611
 
 
 class OracleClient(ODBCClient):
@@ -54,10 +57,10 @@ class OracleClient(ODBCClient):
         self.dsn = f"DRIVER={driver};DBQ={dbq};UID={user};PWD={password};"
 
     def _in_transaction(self) -> "TransactionContext":
-        return TransactionContextPooled(TransactionWrapper(self))
+        return TransactionContextPooled(TransactionWrapper(self), self._pool_init_lock)
 
     def acquire_connection(self) -> Union["ConnectionWrapper", "PoolConnectionWrapper"]:
-        return OraclePoolConnectionWrapper(self)
+        return OraclePoolConnectionWrapper(self, self._pool_init_lock)
 
     async def db_create(self) -> None:
         await self.create_connection(with_db=False)
@@ -99,10 +102,11 @@ class OraclePoolConnectionWrapper(PoolConnectionWrapper):
         except ValueError:
             return parse_datetime(value.decode()[:-32]).astimezone(tz=pytz.utc)
 
-    async def __aenter__(self):
-        connection = await super(OraclePoolConnectionWrapper, self).__aenter__()  # type: ignore
+    async def __aenter__(self) -> "asyncodbc.Connection":
+        connection = await super().__aenter__()
         if getattr(self.client, "database", False) and not hasattr(connection, "current_schema"):
-            await connection.execute(f'ALTER SESSION SET CURRENT_SCHEMA = "{self.client.user}"')
+            client = cast(OracleClient, self.client)
+            await connection.execute(f'ALTER SESSION SET CURRENT_SCHEMA = "{client.user}"')
             await connection.execute("ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD'")
             await connection.execute(
                 "ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD\"T\"HH24:MI:SSTZH:TZM'"
@@ -110,11 +114,11 @@ class OraclePoolConnectionWrapper(PoolConnectionWrapper):
             await connection.add_output_converter(
                 pyodbc.SQL_TYPE_TIMESTAMP, self._timestamp_convert
             )
-            setattr(connection, "current_schema", self.client.user)
+            setattr(connection, "current_schema", client.user)
         return connection
 
 
 class TransactionWrapper(ODBCTransactionWrapper, OracleClient):
-    async def start(self) -> None:
+    async def begin(self) -> None:
         await self._connection.execute("SET TRANSACTION READ WRITE")
-        await super().start()
+        await super().begin()

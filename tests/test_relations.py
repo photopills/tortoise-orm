@@ -6,6 +6,9 @@ from tests.testmodels import (
     Employee,
     Event,
     Extra,
+    M2mWithO2oPk,
+    Node,
+    O2oPkModelWithM2m,
     Pair,
     Reporter,
     Single,
@@ -325,7 +328,7 @@ class TestRelations(test.TestCase):
         retrieved_root = (
             await DoubleFK.all()
             .select_related("left__left__left", "right")
-            .get(id=getattr(root, "id"))  # noqa
+            .get(id=getattr(root, "id"))
         )
         self.assertIsNone(retrieved_root.right)
         assert retrieved_root.left is not None
@@ -461,3 +464,20 @@ class TestDoubleFK(test.TestCase):
         self.assertRegex(query, self.join1_match)
         self.assertRegex(query, self.join2_match)
         self.assertEqual(result, [{"name": "middle", "left__name": "one", "right__name": "two"}])
+
+    async def test_many2many_field_with_o2o_fk(self):
+        tournament = await Tournament.create(name="t")
+        event = await Event.create(name="e", tournament=tournament)
+        address = await Address.create(city="c", street="s", event=event)
+        obj = await M2mWithO2oPk.create(name="m")
+        self.assertEqual(await obj.address.all(), [])
+        await obj.address.add(address)
+        self.assertEqual(await obj.address.all(), [address])
+
+    async def test_o2o_fk_model_with_m2m_field(self):
+        author = await Author.create(name="a")
+        obj = await O2oPkModelWithM2m.create(author=author)
+        node = await Node.create(name="n")
+        self.assertEqual(await obj.nodes.all(), [])
+        await obj.nodes.add(node)
+        self.assertEqual(await obj.nodes.all(), [node])

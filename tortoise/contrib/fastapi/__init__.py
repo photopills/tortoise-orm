@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import sys
 import warnings
+from collections.abc import Generator, Iterable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from types import ModuleType
-from typing import TYPE_CHECKING, Dict, Iterable, Optional, Union
+from typing import TYPE_CHECKING
 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel  # pylint: disable=E0611
@@ -15,6 +17,11 @@ from tortoise.log import logger
 
 if TYPE_CHECKING:
     from fastapi import FastAPI, Request
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 
 class HTTPNotFoundError(BaseModel):
@@ -80,6 +87,10 @@ class RegisterTortoise(AbstractAsyncContextManager):
     add_exception_handlers:
         True to add some automatic exception handlers for ``DoesNotExist`` & ``IntegrityError``.
         This is not recommended for production systems as it may leak data.
+    use_tz:
+        A boolean that specifies if datetime will be timezone-aware by default or not.
+    timezone:
+        Timezone to use, default is UTC.
 
     Raises
     ------
@@ -89,13 +100,16 @@ class RegisterTortoise(AbstractAsyncContextManager):
 
     def __init__(
         self,
-        app: FastAPI,
-        config: Optional[dict] = None,
-        config_file: Optional[str] = None,
-        db_url: Optional[str] = None,
-        modules: Optional[Dict[str, Iterable[Union[str, ModuleType]]]] = None,
+        app: FastAPI | None = None,
+        config: dict | None = None,
+        config_file: str | None = None,
+        db_url: str | None = None,
+        modules: dict[str, Iterable[str | ModuleType]] | None = None,
         generate_schemas: bool = False,
         add_exception_handlers: bool = False,
+        use_tz: bool = False,
+        timezone: str = "UTC",
+        _create_db: bool = False,
     ) -> None:
         self.app = app
         self.config = config
@@ -103,7 +117,11 @@ class RegisterTortoise(AbstractAsyncContextManager):
         self.db_url = db_url
         self.modules = modules
         self.generate_schemas = generate_schemas
-        if add_exception_handlers:
+        self.use_tz = use_tz
+        self.timezone = timezone
+        self._create_db = _create_db
+
+        if add_exception_handlers and app is not None:
 
             @app.exception_handler(DoesNotExist)
             async def doesnotexist_exception_handler(request: "Request", exc: DoesNotExist):
@@ -117,9 +135,15 @@ class RegisterTortoise(AbstractAsyncContextManager):
                 )
 
     async def init_orm(self) -> None:  # pylint: disable=W0612
-        config, config_file = self.config, self.config_file
-        db_url, modules = self.db_url, self.modules
-        await Tortoise.init(config=config, config_file=config_file, db_url=db_url, modules=modules)
+        await Tortoise.init(
+            config=self.config,
+            config_file=self.config_file,
+            db_url=self.db_url,
+            modules=self.modules,
+            use_tz=self.use_tz,
+            timezone=self.timezone,
+            _create_db=self._create_db,
+        )
         logger.info("Tortoise-ORM started, %s, %s", connections._get_storage(), Tortoise.apps)
         if self.generate_schemas:
             logger.info("Tortoise-ORM generating schema")
@@ -130,23 +154,30 @@ class RegisterTortoise(AbstractAsyncContextManager):
         await connections.close_all()
         logger.info("Tortoise-ORM shutdown")
 
-    def __call__(self, *args, **kwargs) -> "RegisterTortoise":
+    def __call__(self, *args, **kwargs) -> Self:
         return self
 
-    async def __aenter__(self) -> "RegisterTortoise":
+    async def __aenter__(self) -> Self:
         await self.init_orm()
         return self
 
-    async def __aexit__(self, *args, **kw):
+    async def __aexit__(self, *args, **kw) -> None:
         await self.close_orm()
+
+    def __await__(self) -> Generator[None, None, Self]:
+        async def _self() -> Self:
+            await self.init_orm()
+            return self
+
+        return _self().__await__()
 
 
 def register_tortoise(
     app: "FastAPI",
-    config: Optional[dict] = None,
-    config_file: Optional[str] = None,
-    db_url: Optional[str] = None,
-    modules: Optional[Dict[str, Iterable[Union[str, ModuleType]]]] = None,
+    config: dict | None = None,
+    config_file: str | None = None,
+    db_url: str | None = None,
+    modules: dict[str, Iterable[str | ModuleType]] | None = None,
     generate_schemas: bool = False,
     add_exception_handlers: bool = False,
 ) -> None:
@@ -227,7 +258,7 @@ def register_tortoise(
         # Leave on_event here to compare with old versions
         # So people can upgrade tortoise-orm in running project without changing any code
 
-        @app.on_event("startup")  # type: ignore[unreachable]
+        @app.on_event("startup")
         async def init_orm() -> None:  # pylint: disable=W0612
             await orm.init_orm()
 

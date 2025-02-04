@@ -4,7 +4,7 @@ Tortoise ORM
 
 Tortoise ORM is an easy-to-use ``asyncio`` ORM *(Object Relational Mapper)* inspired by Django.
 
-Tortoise ORM was build with relations in mind and admiration for the excellent and popular Django ORM.
+Tortoise ORM was built with relations in mind and admiration for the excellent and popular Django ORM.
 It's engraved in it's design that you are working not with just tables, you work with relational data.
 
 .. note::
@@ -13,7 +13,7 @@ It's engraved in it's design that you are working not with just tables, you work
 
 Source & issue trackers are available at `<https://github.com/tortoise/tortoise-orm/>`_
 
-Tortoise ORM is supported on CPython >= 3.8 for SQLite, MySQL and PostgreSQL.
+Tortoise ORM is supported on CPython >= 3.9 for SQLite, MySQL and PostgreSQL.
 
 Introduction
 ============

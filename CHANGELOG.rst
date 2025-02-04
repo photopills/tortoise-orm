@@ -6,28 +6,180 @@ Changelog
 
 .. rst-class:: emphasize-children
 
+0.25
+====
+
+0.25.0 (unreleased)
+------
+Fixed
+^^^^^
+
+Changed
+^^^^^^^
+- add benchmarks for `get_for_dialect` (#1862)
+
+0.24
+====
+
+0.24.0
+------
+Fixed
+^^^^^
+- Rename pypika to pypika_tortoise for fixing package name conflict (#1829)
+- Concurrent connection pool initialization (#1825)
+- `_get_dialects`: support properties (#1859)
+
+Changed
+^^^^^^^
+- Drop support for Python3.8 (#1848)
+- Optimize field conversion to database format to speed up `create` and `bulk_create` (#1840)
+- Improved query performance by optimizing SQL generation (#1837)
+
+0.23.0
+------
+Added
+^^^^^
+- Implement savepoints for transactions (#1816)
+- Added type validation for foreign key fields to ensure type safety. Now raises `ValidationError` when assigning foreign key values with incorrect model types (#1792)
+
+Fixed
+^^^^^
+- Fixed a deadlock in three level nested transactions (#1810)
+- Fix backward_relations in PydanticMeta (#1814)
+
+0.22
+====
+
+0.22.2
+------
+Fixed
+^^^^^
+- Fix bug related to `Connector.div` in combined expressions. (#1794)
+- Fix recovery in case of database downtime (#1796)
+
+Changed
+^^^^^^^
+- Parametrizes UPDATE, DELETE, bulk update and create operations (#1785)
+- Parametrizes related field queries (#1797)
+
+Added
+^^^^^
+- CharEnumField and IntEnumField is supported by pydantic_model_creator (#1798)
+
+0.22.1
+------
+Fixed
+^^^^^
+- Fix unable to use ManyToManyField if OneToOneField passed as Primary Key (#1783)
+- Fix sorting by Term (e.g. RawSQL) (#1788)
+
+Changed
+^^^^^^^
+- Parametrizes SELECT queries including `.count()`, `.exists()`, `.values()`, `.values_list()` (#1777)
+
+0.22.0
+------
+Fixed
+^^^^^
+- Fix enums not quoted, allowing using of str enums for filters (#1776)
+- Primary key field should not be nullable in pydantic schema (#1778)
+- Fix ambiguous column name when grouping with joining (#1766)
+- Fix same model returned by pydantic_model_creator calls with different arguments (#1741)
+
+Added
+^^^^^
+- JSONField adds optional generic support, and supports OpenAPI document generation by specifying `field_type` as a pydantic BaseModel (#1763)
+- Add table_name_generator attribute to Tortoise.init for dynamic table name generation (#1770)
+- Support for annotation and joins F() expressions (#1761) (#1765)
+- Allow use of annotate fields within Case-When expression (#1748)
+- Added new queryset methods: last(), latest(), earliest() (#1754) (#1756)
+
+Changed
+^^^^^^^
+- Change old pydantic docs link to new one (#1775).
+- Refactored pydantic_model_creator, interface not changed  (#1745)
+- Values are no longer validated to be right type upon loading from database (#1750)
+- Refactored private field names in queryset classes (#1751)
+
 0.21
 ====
 
-0.21.3
+0.21.7 <../0.21.7>`_ - 2024-10-14
+------
+Fixed
+^^^^^
+- Fix unittest error with pydantic2.9 (#1734)
+- Fix bug when using annotate and count at the same time but the annotation does not match anything, leading to an IndexError (#1707)
+- Added missing field_type for TimeDeltaField (#1462) (#1699)
+- improve jsonfield type hint (#1700)
+- Fix bug in tortoise.models.Model When a QuerySet uses the only function and then uses the print function to print the returned result, an AttributeError is generated (#1724)
+- Update the pylint plugin to latest astroid version (#1708)
+
+Added
+^^^^^
+- Add POSIX Regex support for PostgreSQL and MySQL (#1714)
+- support app=None for tortoise.contrib.fastapi.RegisterTortoise (#1733)
+
+0.21.6 <../0.21.6>`_ - 2024-08-17
+------
+Fixed
+^^^^^
+- Fix bug in `pydantic_model_creator` when a foreign key is not included in `include` param. (#1430)
+- Fix bug in `contrib.sanic.register_tortoise` causing a deadlock when using asyncpg and > 1 workers (#1696)
+- Open psycopg pool with `.open()` to remove deprecated warning (#1697)
+- Fix bug in `bulk_update` when pk field is not `id` (#1698)
+- Fix mysql uuid compression bug (#1687)
+- Fix comment for fk fields without constraint for mysql (#1679)
+- Removed no_delay option for postgres, as it wasn't doing anything (#1677)
+- Fix bug in `tortoise.models.Model` When a QuerySet uses the only function and then uses the print function to print the returned result, an AttributeError is generated. (#1723)
+
+0.21.5 <../0.21.5>`_ - 2024-07-18
+------
+Added
+^^^^^
+- Propagate `_create_db` parameter to RegisterTortoise. (#1676)
+
+0.21.4 <../0.21.4>`_ - 2024-07-03
+------
+Added
+^^^^^
+- Add ObjectDoesNotExistError to show better 404 message. (#759)
+- DoesNotExist and MultipleObjectsReturned support 'Type[Model]' argument. (#742)(#1650)
+- Add argument use_tz and timezone to RegisterTortoise. (#1649)
+- Support await `tortoise.contrib.fastapi.RegisterTortoise`. (#1662)
+- Add `tortoise.contrib.test.init_memory_sqlite`. (#1657)
+
+Fixed
+^^^^^
+- Fix `update_or_create` errors when field value changed. (#1584)
+- Fix bandit check error (#1643)
+- Fix potential race condition in ConnectionWrapper (#1656)
+- Fix py312 warning for datetime.utcnow (#1661)
+- Fix reusing values and value_list queries (#780)
+
+Changed
+^^^^^^^
+- Remove obsolete loop._selector from contrib/test. (#659)(#1636)
+
+`0.21.3 <../0.21.3>`_ - 2024-06-01
 ------
 Fixed
 ^^^^^
 - Fix `bulk_update` when using source_field for pk (#1633)
 
-0.21.2
+`0.21.2 <../0.21.2>`_ - 2024-05-25
 ------
 Added
 ^^^^^
 - Add `create_unique_index` argument to M2M field and default if it is true (#1620)
 
-0.21.1
+`0.21.1 <../0.21.1>`_ - 2024-05-24
 ------
 Fixed
 ^^^^^
 - Fix error on using old style `pk=True`
 
-0.21.0
+`0.21.0 <../0.21.0>`_ - 2024-05-23
 ------
 Added
 ^^^^^

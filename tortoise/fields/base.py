@@ -1,22 +1,10 @@
 import sys
 import warnings
+from collections.abc import Callable
 from enum import Enum
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    Generic,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    overload,
-)
+from typing import TYPE_CHECKING, Any, Generic, Optional, Type, TypeVar, Union, overload
 
-from pypika.terms import Term
+from pypika_tortoise.terms import Term
 
 from tortoise.exceptions import ConfigurationError, ValidationError
 from tortoise.validators import Validator
@@ -52,7 +40,7 @@ NO_ACTION = OnDelete.NO_ACTION
 
 class _FieldMeta(type):
     # TODO: Require functions to return field instances instead of this hack
-    def __new__(mcs, name: str, bases: Tuple[Type, ...], attrs: dict):
+    def __new__(mcs, name: str, bases: tuple[Type, ...], attrs: dict) -> type:
         if len(bases) > 1 and bases[0] is Field:
             # Instantiate class with only the 1st base class (should be Field)
             cls = type.__new__(mcs, name, (bases[0],), attrs)
@@ -113,7 +101,7 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
         Is this field able to be DB-generated?
 
     .. attribute:: function_cast
-        :annotation: Optional[pypika.Term] = None
+        :annotation: Optional[pypika_tortoise.Term] = None
 
         A casting term that we need to apply in case the DB needs emulation help.
 
@@ -187,7 +175,7 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
         db_index: Optional[bool] = None,
         description: Optional[str] = None,
         model: "Optional[Model]" = None,
-        validators: Optional[List[Union[Validator, Callable]]] = None,
+        validators: Optional[list[Union[Validator, Callable]]] = None,
         **kwargs: Any,
     ) -> None:
         if (index := kwargs.pop("index", None)) is not None:
@@ -238,7 +226,7 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
         self.model_field_name = ""
         self.description = description
         self.docstring: Optional[str] = None
-        self.validators: List[Union[Validator, Callable]] = validators or []
+        self.validators: list[Union[Validator, Callable]] = validators or []
         # TODO: consider making this not be set from constructor
         self.model: Type["Model"] = model  # type: ignore
         self.reference: "Optional[Field]" = None
@@ -258,6 +246,7 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
         """
         if value is not None and not isinstance(value, self.field_type):
             value = self.field_type(value)  # pylint: disable=E1102
+
         self.validate(value)
         return value
 
@@ -269,10 +258,9 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
         """
         if value is not None and not isinstance(value, self.field_type):
             value = self.field_type(value)  # pylint: disable=E1102
-        self.validate(value)
         return value
 
-    def validate(self, value: Any):
+    def validate(self, value: Any) -> None:
         """
         Validate whether given value is valid
 
@@ -306,22 +294,30 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
         """
         return {}
 
-    def _get_dialects(self) -> Dict[str, dict]:
+    def _get_dialects(self) -> dict[str, dict]:
         ret = {}
-        for dialect in [key for key in dir(self) if key.startswith("_db_")]:
-            item = {}
+        for dialect in dir(self):
+            if not dialect.startswith("_db_"):
+                continue
             cls = getattr(self, dialect)
+            d = cls.__dict__
             try:
-                cls = cls(self)
+                obj = cls(self)
             except TypeError:
                 pass
-            for key, val in cls.__dict__.items():
-                if not key.startswith("_"):
-                    item[key] = val
-            ret[dialect[4:]] = item
+            else:
+                props = {
+                    prop: getattr(obj, prop)
+                    for prop in dir(cls)
+                    if isinstance(getattr(cls, prop), property)
+                }
+                d = {**d, **props}
+
+            ret[dialect[4:]] = {k: v for k, v in d.items() if not k.startswith("_")}
+
         return ret
 
-    def get_db_field_types(self) -> Optional[Dict[str, str]]:
+    def get_db_field_types(self) -> Optional[dict[str, str]]:
         """
         Returns the DB types for this field.
 
@@ -330,12 +326,17 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
         """
         if not self.has_db_field:  # pragma: nocoverage
             return None
+        default = getattr(self, "SQL_TYPE")
         return {
-            "": getattr(self, "SQL_TYPE"),
+            "": default,
             **{
-                dialect: _db["SQL_TYPE"]
-                for dialect, _db in self._get_dialects().items()
-                if "SQL_TYPE" in _db
+                dialect: sql_type
+                for dialect, sql_type in (
+                    (key[4:], self.get_for_dialect(key[4:], "SQL_TYPE"))
+                    for key in dir(self)
+                    if key.startswith("_db_")
+                )
+                if sql_type != default
             },
         }
 
@@ -346,8 +347,18 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
         :param dialect: The requested SQL Dialect.
         :param key: The attribute/method name.
         """
-        dialect_data = self._get_dialects().get(dialect, {})
-        return dialect_data.get(key, getattr(self, key, None))
+        try:
+            dialect_cls = getattr(self, f"_db_{dialect}")  # throws AttributeError if not present
+            dialect_value = getattr(dialect_cls, key)  # throws AttributeError if not present
+        except AttributeError:
+            pass
+        else:  # we have dialect_cls and dialect_value, so lets use it
+            # it could be that dialect_value is a computed property, like in CharField._db_oracle.SQL_TYPE,
+            # and therefore one first needs to instantiate dialect_cls
+            if isinstance(dialect_value, property):
+                return getattr(dialect_cls(self), key)
+            return dialect_value
+        return getattr(self, key, None)  # there is nothing special defined, return the value of self
 
     def describe(self, serializable: bool) -> dict:
         """
@@ -401,7 +412,7 @@ class Field(Generic[VALUE], metaclass=_FieldMeta):
                 return str(typ).replace("typing.", "")
             return f"{typ.__module__}.{typ.__name__}"
 
-        def type_name(typ: Any) -> Union[str, List[str]]:
+        def type_name(typ: Any) -> Union[str, list[str]]:
             try:
                 return typ._meta.full_name
             except (AttributeError, TypeError):

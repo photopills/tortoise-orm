@@ -1,7 +1,10 @@
+from pypika_tortoise import CustomFunction
+
 from tests.testmodels import Event, Team, Tournament
 from tortoise.contrib import test
-from tortoise.contrib.test.condition import NotEQ
+from tortoise.contrib.test.condition import In, NotEQ
 from tortoise.exceptions import FieldError
+from tortoise.expressions import Function
 from tortoise.functions import Length, Trim
 
 
@@ -27,6 +30,17 @@ class TestValues(test.TestCase):
         tournament2 = await Tournament.filter(name="New Tournament").values("name", "events__name")
         self.assertEqual(tournament2[0], {"name": "New Tournament", "events__name": "Test"})
 
+    async def test_values_related_rfk_reuse_query(self):
+        tournament = await Tournament.create(name="New Tournament")
+        await Event.create(name="Test", tournament_id=tournament.id)
+
+        query = Tournament.filter(name="New Tournament").values("name", "events__name")
+        tournament2 = await query
+        self.assertEqual(tournament2[0], {"name": "New Tournament", "events__name": "Test"})
+
+        tournament2 = await query
+        self.assertEqual(tournament2[0], {"name": "New Tournament", "events__name": "Test"})
+
     async def test_values_list_related_rfk(self):
         tournament = await Tournament.create(name="New Tournament")
         await Event.create(name="Test", tournament_id=tournament.id)
@@ -34,6 +48,17 @@ class TestValues(test.TestCase):
         tournament2 = await Tournament.filter(name="New Tournament").values_list(
             "name", "events__name"
         )
+        self.assertEqual(tournament2[0], ("New Tournament", "Test"))
+
+    async def test_values_list_related_rfk_reuse_query(self):
+        tournament = await Tournament.create(name="New Tournament")
+        await Event.create(name="Test", tournament_id=tournament.id)
+
+        query = Tournament.filter(name="New Tournament").values_list("name", "events__name")
+        tournament2 = await query
+        self.assertEqual(tournament2[0], ("New Tournament", "Test"))
+
+        tournament2 = await query
         self.assertEqual(tournament2[0], ("New Tournament", "Test"))
 
     async def test_values_related_m2m(self):
@@ -177,4 +202,15 @@ class TestValues(test.TestCase):
             tournaments,
             [{"name": "  x", "name_trim": "x"}, {"name": " y ", "name_trim": "y"}],
             sorted_key="name",
+        )
+
+    @test.requireCapability(dialect=In("sqlite"))
+    async def test_values_with_custom_function(self):
+        class TruncMonth(Function):
+            database_func = CustomFunction("DATE_FORMAT", ["name", "dt_format"])
+
+        sql = Tournament.all().annotate(date=TruncMonth("created", "%Y-%m-%d")).values("date").sql()
+        self.assertEqual(
+            sql,
+            'SELECT DATE_FORMAT("created",?) "date" FROM "tournament"',
         )

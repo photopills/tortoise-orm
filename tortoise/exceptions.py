@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 if TYPE_CHECKING:
     from tortoise import Model, Type
@@ -52,31 +52,52 @@ class NoValuesFetched(OperationalError):
     """
 
 
-class MultipleObjectsReturned(OperationalError):
+class NotExistOrMultiple(OperationalError):
+    TEMPLATE = ""
+
+    def __init__(self, model: "Union[Type[Model], str]", *args) -> None:
+        self.model: "Optional[Type[Model]]" = None
+        if isinstance(model, str):
+            args = (model,) + args
+        else:
+            self.model = model
+        super().__init__(*args)
+
+    def __str__(self) -> str:
+        if self.model is None:
+            return super().__str__()
+        return self.TEMPLATE.format(self.model.__name__)
+
+
+class MultipleObjectsReturned(NotExistOrMultiple):
     """
     The MultipleObjectsReturned exception is raised when doing a ``.get()`` operation,
     and more than one object is returned.
     """
 
-    def __init__(self, model: "Type[Model]", *args):
+    TEMPLATE = 'Multiple objects returned for "{}", expected exactly one'
+
+
+class ObjectDoesNotExistError(OperationalError, KeyError):
+    """
+    The DoesNotExist exception is raised when an item with the passed primary key does not exist
+    """
+
+    def __init__(self, model: "Type[Model]", pk_name: str, pk_val: Any) -> None:
         self.model: "Type[Model]" = model
-        super().__init__(*args)
+        self.pk_name: str = pk_name
+        self.pk_val: Any = pk_val
 
-    def __str__(self):
-        return f'Multiple objects returned for "{self.model.__name__}", expected exactly one'
+    def __str__(self) -> str:
+        return f"{self.model.__name__} has no object with {self.pk_name}={self.pk_val}"
 
 
-class DoesNotExist(OperationalError):
+class DoesNotExist(NotExistOrMultiple):
     """
     The DoesNotExist exception is raised when expecting data, such as a ``.get()`` operation.
     """
 
-    def __init__(self, model: "Type[Model]", *args):
-        self.model: "Type[Model]" = model
-        super().__init__(*args)
-
-    def __str__(self):
-        return f'Object "{self.model.__name__}" does not exist'
+    TEMPLATE = 'Object "{}" does not exist'
 
 
 class IncompleteInstanceError(OperationalError):

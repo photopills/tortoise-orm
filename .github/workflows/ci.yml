@@ -8,7 +8,7 @@ on:
       - main
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     services:
       postgres:
         image: postgres
@@ -26,14 +26,14 @@ jobs:
           MYSQL_ROOT_PASSWORD: 123456
         options: --health-cmd="mysqladmin ping" --health-interval 10s --health-timeout 5s --health-retries 5
       mssql:
-        image: mcr.microsoft.com/mssql/server:2019-CU15-ubuntu-20.04
+        image: mcr.microsoft.com/mssql/server:2022-CU15-ubuntu-22.04
         ports:
           - 1433:1433
         env:
           ACCEPT_EULA: Y
           SA_PASSWORD: Abcd12345678
         options: >-
-          --health-cmd "/opt/mssql-tools/bin/sqlcmd -U sa -P Abcd12345678 -Q 'select 1' -b -o /dev/null"
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Abcd12345678 -Q 'SELECT 1' -b -o /dev/null"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -45,7 +45,7 @@ jobs:
       TORTOISE_MSSQL_DRIVER: ODBC Driver 18 for SQL Server
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/cache@v4
         with:
@@ -61,8 +61,6 @@ jobs:
         run: |
           pip install -U pip poetry
           poetry config virtualenvs.create false
-      - name: Install requirements
-        run: make deps
       - name: Install ODBC driver
         run: |
           sudo curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
@@ -71,8 +69,23 @@ jobs:
           ACCEPT_EULA=Y sudo apt-get install -y msodbcsql18
       - name: Run ci
         run: make ci
+      - name: Test FastAPI Example
+        run: |
+          export DEST=examples/fastapi && PYTHONPATH=$DEST pytest $PYTEST_ARGS $DEST/_tests.py
+        env:
+          PYTHONDEVMODE: 1
+          PYTEST_ARGS: "-n auto --cov=tortoise --cov-append --tb=native -q"
+      - name: Test Blacksheep Example
+        if: matrix.python-version != '3.13'
+        run: PYTHONPATH=$DEST pytest $PYTEST_ARGS $DEST/_tests.py
+        env:
+          DEST: examples/blacksheep
+          PYTHONDEVMODE: 1
+          PYTEST_ARGS: "-n auto --cov=tortoise --cov-append --tb=native -q"
       - name: Upload Coverage
-        run: coveralls --service=github
+        run: |
+          pip3 install --upgrade coveralls
+          coveralls --service=github
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COVERALLS_FLAG_NAME: ${{ matrix.python-version }}
@@ -81,7 +94,7 @@ jobs:
   coveralls:
     name: Finish Coveralls
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Finished
         run: |

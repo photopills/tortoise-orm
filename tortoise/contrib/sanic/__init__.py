@@ -1,5 +1,6 @@
+from collections.abc import Iterable
 from types import ModuleType
-from typing import Dict, Iterable, Optional, Union
+from typing import Optional, Union
 
 from sanic import Sanic  # pylint: disable=E0401
 
@@ -12,7 +13,7 @@ def register_tortoise(
     config: Optional[dict] = None,
     config_file: Optional[str] = None,
     db_url: Optional[str] = None,
-    modules: Optional[Dict[str, Iterable[Union[str, ModuleType]]]] = None,
+    modules: Optional[dict[str, Iterable[Union[str, ModuleType]]]] = None,
     generate_schemas: bool = False,
 ) -> None:
     """
@@ -77,13 +78,23 @@ def register_tortoise(
         For any configuration error
     """
 
-    @app.listener("before_server_start")
-    async def init_orm(app, loop):  # pylint: disable=W0612
+    async def tortoise_init() -> None:
         await Tortoise.init(config=config, config_file=config_file, db_url=db_url, modules=modules)
-        logger.info("Tortoise-ORM started, %s, %s", connections._get_storage(), Tortoise.apps)
-        if generate_schemas:
+        logger.info(
+            "Tortoise-ORM started, %s, %s", connections._get_storage(), Tortoise.apps
+        )  # pylint: disable=W0212
+
+    if generate_schemas:
+
+        @app.listener("main_process_start")
+        async def init_orm_main(app, loop):  # pylint: disable=W0612
+            await tortoise_init()
             logger.info("Tortoise-ORM generating schema")
             await Tortoise.generate_schemas()
+
+    @app.listener("before_server_start")
+    async def init_orm(app, loop):  # pylint: disable=W0612
+        await tortoise_init()
 
     @app.listener("after_server_stop")
     async def close_orm(app, loop):  # pylint: disable=W0612
