@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import importlib
-import importlib.metadata as importlib_metadata
 import json
 import logging
 import os
@@ -13,6 +11,7 @@ from inspect import isclass
 from types import ModuleType
 from typing import Any, cast
 
+from anyio import from_thread
 from pypika_tortoise import Query, Table
 
 from tortoise.backends.base.client import BaseDBAsyncClient
@@ -638,14 +637,18 @@ def run_async(coro: Coroutine) -> None:
 
         run_async(do_stuff())
     """
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(coro)
-    finally:
-        loop.run_until_complete(connections.close_all(discard=True))
+
+    async def main() -> None:
+        try:
+            await coro
+        finally:
+            await connections.close_all(discard=True)
+
+    with from_thread.start_blocking_portal() as portal:
+        portal.call(main)
 
 
-__version__ = importlib_metadata.version("tortoise-orm")
+__version__ = "0.25.3"
 
 __all__ = [
     "Model",
