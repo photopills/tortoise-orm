@@ -59,7 +59,7 @@ requires-poetry = ">=2.0"
 packages = [
     { include = "tortoise" }
 ]
-version = "0.0.0"
+version = "0.25.3"
 
 [dependency-groups]
 dev = [
